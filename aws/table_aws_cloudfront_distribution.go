@@ -9,6 +9,15 @@ import (
 	"github.com/turbot/steampipe-plugin-sdk/plugin/transform"
 )
 
+type distributionInfo = struct {
+	cloudfront.DistributionSummary
+	DistributionConfig            *cloudfront.DistributionConfig
+	ActiveTrustedKeyGroups        *cloudfront.ActiveTrustedKeyGroups
+	ActiveTrustedSigners          *cloudfront.ActiveTrustedSigners
+	InProgressInvalidationBatches *int64
+	Etag                          *string
+}
+
 //// TABLE DEFINITION
 
 func tableAwsCloudfrontDistribution(_ context.Context) *plugin.Table {
@@ -39,6 +48,7 @@ func tableAwsCloudfrontDistribution(_ context.Context) *plugin.Table {
 				Description: "The current version of the distribution's information.",
 				Type:        proto.ColumnType_STRING,
 				Hydrate:     getCloudfrontDistribution,
+				Transform:   transform.FromField("Etag"),
 			},
 			{
 				Name:        "status",
@@ -79,46 +89,47 @@ func tableAwsCloudfrontDistribution(_ context.Context) *plugin.Table {
 				Transform:   transform.FromField("IsIPV6Enabled"),
 			},
 			{
-				Name:        "active_trusted_key_groups_enabled",
-				Description: "This field is true if any of the key groups have public keys that CloudFront can use to verify the signatures of signed URLs and signed cookies. If not, this field is false.",
-				Type:        proto.ColumnType_BOOL,
-				Hydrate:     getCloudfrontDistribution,
-				Transform:   transform.FromField("Distribution.ActiveTrustedKeyGroups.Enabled"),
+				Name:        "alias_icp_recordals",
+				Description: "AWS services in China customers must file for an Internet Content Provider (ICP) recordal if they want to serve content publicly on an alternate domain name, also known as a CNAME, that they've added to CloudFront. AliasICPRecordal provides the ICP recordal status for CNAMEs associated with distributions.",
+				Type:        proto.ColumnType_JSON,
+				Transform:   transform.FromField("AliasICPRecordals"),
 			},
 			{
-				Name:        "active_trusted_key_groups_items",
+				Name:        "custom_error_responses",
+				Description: "A complex type that contains zero or more CustomErrorResponses elements.",
+				Type:        proto.ColumnType_JSON,
+			},
+			{
+				Name:        "default_cache_behavior",
+				Description: "A complex type that describes the default cache behavior if you don't specify a CacheBehavior element or if files don't match any of the values of PathPattern in CacheBehavior elements. You must create exactly one default cache behavior.",
+				Type:        proto.ColumnType_JSON,
+			},
+			{
+				Name:        "origin_groups",
+				Description: "A complex type that contains information about origin groups for this distribution.",
+				Type:        proto.ColumnType_JSON,
+			},
+			{
+				Name:        "restrictions",
+				Description: "A complex type that identifies ways in which you want to restrict distribution of your content.",
+				Type:        proto.ColumnType_JSON,
+			},
+			{
+				Name:        "viewer_certificate",
+				Description: "A complex type that determines the distribution’s SSL/TLS configuration for communicating with viewers.",
+				Type:        proto.ColumnType_JSON,
+			},
+			{
+				Name:        "active_trusted_key_groups",
 				Description: "A list of key groups, including the identifiers of the public keys in each key group that CloudFront can use to verify the signatures of signed URLs and signed cookies.",
 				Type:        proto.ColumnType_JSON,
 				Hydrate:     getCloudfrontDistribution,
-				Transform:   transform.FromField("Distribution.ActiveTrustedKeyGroups.Items"),
 			},
 			{
-				Name:        "active_trusted_key_groups_quantity",
-				Description: "The number of key groups in the list.",
-				Type:        proto.ColumnType_INT,
-				Hydrate:     getCloudfrontDistribution,
-				Transform:   transform.FromField("Distribution.ActiveTrustedKeyGroups.Quantity"),
-			},
-			{
-				Name:        "active_trusted_signers_enabled",
-				Description: "This field is true if any of the AWS accounts in the list have active CloudFront key pairs that CloudFront can use to verify the signatures of signed URLs and signed cookies. If not, this field is false.",
-				Type:        proto.ColumnType_BOOL,
-				Hydrate:     getCloudfrontDistribution,
-				Transform:   transform.FromField("Distribution.ActiveTrustedSigners.Enabled"),
-			},
-			{
-				Name:        "active_trusted_signers_items",
+				Name:        "active_trusted_signers",
 				Description: "A list of AWS accounts and the identifiers of active CloudFront key pairs in each account that CloudFront can use to verify the signatures of signed URLs and signed cookies.",
 				Type:        proto.ColumnType_JSON,
 				Hydrate:     getCloudfrontDistribution,
-				Transform:   transform.FromField("Distribution.ActiveTrustedSigners.Items"),
-			},
-			{
-				Name:        "active_trusted_signers_quantity",
-				Description: "The number of AWS accounts in the list.",
-				Type:        proto.ColumnType_INT,
-				Hydrate:     getCloudfrontDistribution,
-				Transform:   transform.FromField("Distribution.ActiveTrustedSigners.Quantity"),
 			},
 			{
 				Name:        "price_class",
@@ -127,60 +138,41 @@ func tableAwsCloudfrontDistribution(_ context.Context) *plugin.Table {
 			},
 			{
 				Name:        "web_acl_id",
-				Description: "The Web ACL Id (if any) associated with the distribution..",
+				Description: "The Web ACL Id (if any) associated with the distribution.",
 				Type:        proto.ColumnType_STRING,
 				Transform:   transform.FromField("WebACLId"),
 			},
 			{
-				Name:        "aliases_quantity",
+				Name:        "default_root_object",
+				Description: "The object that you want CloudFront to request from your origin.",
+				Type:        proto.ColumnType_STRING,
+				Hydrate:     getCloudfrontDistribution,
+				Transform:   transform.FromField("DistributionConfig.DefaultRootObject"),
+			},
+			{
+				Name:        "aliases",
 				Description: "The number of CNAME aliases, if any, that you want to associate with this Distribution.",
-				Type:        proto.ColumnType_STRING,
-				Transform:   transform.FromField("Aliases.Quantity"),
-			},
-			{
-				Name:        "aliases_items",
-				Description: "A complex type that contains the CNAME aliases, if any, that you want to associate with this distribution.",
 				Type:        proto.ColumnType_JSON,
-				Transform:   transform.FromField("Aliases.Items"),
 			},
 			{
-				Name:        "cache_behaviors_quantity",
+				Name:        "cache_behaviors",
 				Description: "The number of cache behaviors for this Distribution.",
-				Type:        proto.ColumnType_STRING,
-				Transform:   transform.FromField("CacheBehaviors.Quantity"),
-			},
-			{
-				Name:        "cache_behaviors_items",
-				Description: "Optional: A complex type that contains cache behaviors for this Distribution. If Quantity is 0, you can omit Items. ",
 				Type:        proto.ColumnType_JSON,
-				Transform:   transform.FromField("CacheBehaviors.Items"),
 			},
 			{
-				Name:        "origins_quantity",
+				Name:        "origins",
 				Description: "The number of origins for this distribution.",
-				Type:        proto.ColumnType_STRING,
-				Transform:   transform.FromField("Origins.Quantity"),
-			},
-			{
-				Name:        "origins_items",
-				Description: "A list of origins. ",
 				Type:        proto.ColumnType_JSON,
-				Transform:   transform.FromField("Origins.Items"),
 			},
 			{
 				Name:        "in_progress_invalidation_batches",
 				Description: "A list of origins. ",
 				Type:        proto.ColumnType_INT,
 				Hydrate:     getCloudfrontDistribution,
-				Transform:   transform.FromField("Distribution.InProgressInvalidationBatches"),
+				Transform:   transform.FromField("InProgressInvalidationBatches"),
 			},
-			/// Standard columns for all tables
-			{
-				Name:        "title",
-				Description: resourceInterfaceDescription("title"),
-				Type:        proto.ColumnType_STRING,
-				Transform:   transform.FromField("Id"),
-			},
+
+			// Standard columns for all tables
 			{
 				Name:        "tags",
 				Description: resourceInterfaceDescription("tags"),
@@ -214,7 +206,7 @@ func listAwsCloudfrontDistribution(ctx context.Context, d *plugin.QueryData, _ *
 		&cloudfront.ListDistributionsInput{},
 		func(page *cloudfront.ListDistributionsOutput, isLast bool) bool {
 			for _, parameter := range page.DistributionList.Items {
-				d.StreamListItem(ctx, parameter)
+				d.StreamListItem(ctx, distributionInfo{DistributionSummary: *parameter})
 			}
 			return !isLast
 		},
@@ -234,7 +226,7 @@ func getCloudfrontDistribution(ctx context.Context, d *plugin.QueryData, h *plug
 
 	var cloudfrontID string
 	if h.Item != nil {
-		cloudfrontID = *cloudfrontDistributionID(h.Item)
+		cloudfrontID = *h.Item.(distributionInfo).Id
 	} else {
 		cloudfrontID = d.KeyColumnQuals["id"].GetStringValue()
 	}
@@ -248,7 +240,31 @@ func getCloudfrontDistribution(ctx context.Context, d *plugin.QueryData, h *plug
 		return nil, err
 	}
 
-	return op, nil
+	return distributionInfo{
+		DistributionSummary: cloudfront.DistributionSummary{
+			ARN:                  op.Distribution.ARN,
+			Id:                   op.Distribution.Id,
+			DomainName:           op.Distribution.DomainName,
+			Status:               op.Distribution.Status,
+			LastModifiedTime:     op.Distribution.LastModifiedTime,
+			AliasICPRecordals:    op.Distribution.AliasICPRecordals,
+			Enabled:              op.Distribution.DistributionConfig.Enabled,
+			HttpVersion:          op.Distribution.DistributionConfig.HttpVersion,
+			IsIPV6Enabled:        op.Distribution.DistributionConfig.IsIPV6Enabled,
+			PriceClass:           op.Distribution.DistributionConfig.PriceClass,
+			WebACLId:             op.Distribution.DistributionConfig.WebACLId,
+			Comment:              op.Distribution.DistributionConfig.Comment,
+			Origins:              op.Distribution.DistributionConfig.Origins,
+			Aliases:              op.Distribution.DistributionConfig.Aliases,
+			CacheBehaviors:       op.Distribution.DistributionConfig.CacheBehaviors,
+			DefaultCacheBehavior: op.Distribution.DistributionConfig.DefaultCacheBehavior,
+		},
+		DistributionConfig:            op.Distribution.DistributionConfig,
+		ActiveTrustedKeyGroups:        op.Distribution.ActiveTrustedKeyGroups,
+		ActiveTrustedSigners:          op.Distribution.ActiveTrustedSigners,
+		InProgressInvalidationBatches: op.Distribution.InProgressInvalidationBatches,
+		Etag:                          op.ETag,
+	}, nil
 }
 
 func getCloudfrontDistributionTags(ctx context.Context, d *plugin.QueryData, h *plugin.HydrateData) (interface{}, error) {
@@ -259,12 +275,11 @@ func getCloudfrontDistributionTags(ctx context.Context, d *plugin.QueryData, h *
 	if err != nil {
 		return nil, err
 	}
-
-	cloudfrontArn := cloudfrontDistributionArn(h.Item)
+	data := h.Item.(distributionInfo)
 
 	// Build the params
 	params := &cloudfront.ListTagsForResourceInput{
-		Resource: cloudfrontArn,
+		Resource: data.ARN,
 	}
 
 	// Get call
@@ -276,7 +291,7 @@ func getCloudfrontDistributionTags(ctx context.Context, d *plugin.QueryData, h *
 	return op, nil
 }
 
-/// TRANSFORM FUNCTIONS
+//// TRANSFORM FUNCTIONS
 
 func cloudfrontDistributionTagListToTurbotTags(ctx context.Context, d *transform.TransformData) (interface{}, error) {
 	plugin.Logger(ctx).Trace("cloudfrontDistributionTagListToTurbotTags")
@@ -294,26 +309,4 @@ func cloudfrontDistributionTagListToTurbotTags(ctx context.Context, d *transform
 	}
 
 	return turbotTagsMap, nil
-}
-
-func cloudfrontDistributionID(item interface{}) *string {
-	switch item.(type) {
-	case *cloudfront.GetDistributionOutput:
-		return item.(*cloudfront.GetDistributionOutput).Distribution.Id
-
-	case *cloudfront.DistributionSummary:
-		return item.(*cloudfront.DistributionSummary).Id
-	}
-	return nil
-}
-
-func cloudfrontDistributionArn(item interface{}) *string {
-	switch item.(type) {
-	case *cloudfront.GetDistributionOutput:
-		return item.(*cloudfront.GetDistributionOutput).Distribution.ARN
-
-	case *cloudfront.DistributionSummary:
-		return item.(*cloudfront.DistributionSummary).ARN
-	}
-	return nil
 }
