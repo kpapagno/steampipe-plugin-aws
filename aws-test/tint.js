@@ -380,38 +380,22 @@ const _runTerraformApplyForTestPhase = async function (test, phase) {
   return test;
 };
 
-const _runGraphqlQuery = function (test, query) {
+const _runGraphqlQuery = function(test, query) {
   return new Promise((resolve, reject) => {
     try {
       var queryTmp = _renderToTmp(test, query.query);
-      var variablesTmp = _renderToTmp(test, query.variables, {});
+      var variablesTmp = _renderToTmp(test, query.variables, "{}");
       var expectedTmp = _renderToTmp(test, query.expected);
     } catch (e) {
-      console.log(chalk.red(`Template Error: ${e.sourcePath}`));
+      console.log(chalk.red(`Template rendering error in: ${test.dir}`));
       console.log(chalk.red(e.message));
+      console.log(chalk.red(`Error source path: ${e.sourcePath}`));
       throw e;
     }
 
     console.log(
       chalk.yellow(`\nRunning SQL query: ${path.basename(query.query)}`)
     );
-
-    /*
-    const args = [
-      "graphql",
-      "--query",
-      queryTmp,
-      "--variables",
-      variablesTmp,
-      "--expected",
-      expectedTmp,
-      "--format",
-      "json",
-      "--timeout",
-      process.env.TURBOT_TEST_EXPECTED_TIMEOUT || 180
-    ];
-    const cmd = spawn("turbot", args, { encoding: "utf8" });
-    */
 
     q = fs.readFileSync(queryTmp, { encoding: "utf8" });
     q = q.replace(/\n/, " ");
@@ -453,20 +437,21 @@ const _runGraphqlQuery = function (test, query) {
       } catch (e) {
         result.output = {};
       }
-      if (true) {
+      // if (true) {
+      if (code) {
         // if (code) { <<<< WHY?
         var outputStr = JSON.stringify(result.output, null, 2) + "\n";
         var expectedStr =
           JSON.stringify(JSON.parse(fs.readFileSync(expectedTmp)), null, 2) +
           "\n";
-        var differences = diff.diffJson(outputStr, expectedStr);
+        var differences = diff.diffLines(outputStr, expectedStr);
 
         differences.forEach(part => {
           if (part.added) {
-            result.status = 1
+            // result.status = 1
             process.stdout.write(chalk.green(part.value));
           } else if (part.removed) {
-            result.status = 1
+            // result.status = 1
             process.stdout.write(chalk.red(part.value));
           } else {
             process.stdout.write(chalk.dim(part.value));
@@ -556,23 +541,20 @@ const _run = async function (tests) {
   var testNames = tests.map(i => i.dir);
   var results = _.keyBy(tests, "dir");
 
-  // Set the test resource names before running any steps to allow same name
-  // use during consecutive tests
-  process.env.TURBOT_TEST_RESOURCE_NAME_PREFIX =
-    process.env.TURBOT_TEST_RESOURCE_NAME_PREFIX || "turbottest";
-  process.env.TURBOT_TEST_RESOURCE_NAME =
-    process.env.TURBOT_TEST_RESOURCE_NAME ||
-    process.env.TURBOT_TEST_RESOURCE_NAME_PREFIX + _.random(100000);
-  process.env.TURBOT_TEST_RESOURCE_NAME_1 =
-    process.env.TURBOT_TEST_RESOURCE_NAME_1 ||
-    process.env.TURBOT_TEST_RESOURCE_NAME_PREFIX + _.random(100000);
-  process.env.TURBOT_TEST_RESOURCE_NAME_2 =
-    process.env.TURBOT_TEST_RESOURCE_NAME_2 ||
-    process.env.TURBOT_TEST_RESOURCE_NAME_PREFIX + _.random(100000);
+  // TODO: Do we need prefix to be confiurable?
+  const resourceNamePrefix = "turbottest";
+
+  // Use this object to store any data that applies to a test and all of its
+  // prereqs
+  const setupData = {
+    resourceName: resourceNamePrefix + _.random(10000),
+    resourceName1: resourceNamePrefix + _.random(10000),
+    resourceName2: resourceNamePrefix + _.random(10000)
+  };
 
   try {
     for (const t of testNames) {
-      results[t] = await _runSetup(results[t]);
+      results[t] = await _runSetup(results[t], setupData);
       const phases = ["pretest", "test", "posttest"];
       for (const phase of phases) {
         results[t] = await _runTestPhase(results[t], phase);
@@ -604,11 +586,18 @@ const _runSetup = async function (test) {
    * To set the environment variable create a file with
    * extension ".env.staging"
    */
-  envVariable.env("staging", `${test.dir}`);
-  console.log(
-    "customEnv TURBOT_TEST_EXPECTED_TIMEOUT",
-    process.env.TURBOT_TEST_EXPECTED_TIMEOUT
-  );
+   envVariable.env("staging", `${test.dir}`);
+   for (const [name, value] of Object.entries(process.env)) {
+     if (name.startsWith("TURBOT_TEST_")) {
+       console.log(`Custom env variable ${name}=${value}`);
+     }
+   }
+
+   // Set this after the env file has been loaded since any env variables in the
+   // custom env file wil NOT override existing env variable values
+   process.env.TURBOT_TEST_RESOURCE_NAME = process.env.TURBOT_TEST_RESOURCE_NAME || setupData.resourceName;
+   process.env.TURBOT_TEST_RESOURCE_NAME_1 = process.env.TURBOT_TEST_RESOURCE_NAME_1 || setupData.resourceName1;
+   process.env.TURBOT_TEST_RESOURCE_NAME_2 = process.env.TURBOT_TEST_RESOURCE_NAME_2 || setupData.resourceName2;
 
   if (test.failed) {
     return test;
@@ -623,14 +612,27 @@ const _runTestPhase = async function (test, phase) {
     return test;
   }
   console.log(chalk.bold(`\n${phase.toUpperCase()}: ${test.dir}`));
-  test = await _runTerraformApplyForTestPhase(test, phase);
+  try {
+    test = await _runTerraformApplyForTestPhase(test, phase);
+  } catch (e) {
+    test.failed = true;
+    console.log(chalk.red(`Error running Terraform applying in ${test.dir} for ${phase} phase`));
+    console.log(chalk.red(e.message));
+    throw e;
+  }
   let terraformSuccessful = true;
   // Default to 0 if there is no status because this phase didn't have
   // Terraform to run
   terraformSuccessful =
-    _.get(test, "test.terraform.init.status", 0) === 0 &&
-    _.get(test, "test.terraform.apply.status", 0) === 0;
-  test = await _runGraphqlQueriesForTestPhase(test, phase, terraformSuccessful);
+    _.get(test, "test.terraform.init.status", 0) === 0 && _.get(test, "test.terraform.apply.status", 0) === 0;
+  try {
+    test = await _runGraphqlQueriesForTestPhase(test, phase, terraformSuccessful);
+  } catch (e) {
+    test.failed = true;
+    console.log(chalk.red(`Error running GraphQL queries in ${test.dir} for ${phase} phase`));
+    console.log(chalk.red(e.message));
+    throw e;
+  }
   return test;
 };
 
