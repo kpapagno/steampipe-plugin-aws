@@ -47,7 +47,7 @@ data "null_data_source" "resource" {
   }
 }
 
-# Create AWS > EC2 > Transit Gateway
+# Create AWS > EKS > Cluster
 resource "aws_eks_cluster" "named_test_resource" {
   name     = var.resource_name
   role_arn = aws_iam_role.named_test_resource.arn
