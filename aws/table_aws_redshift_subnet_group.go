@@ -19,7 +19,7 @@ func tableAwsRedshiftSubnetGroup(_ context.Context) *plugin.Table {
 		Description: "AWS Redshift Subnet Group",
 		Get: &plugin.GetConfig{
 			KeyColumns:        plugin.SingleColumn("cluster_subnet_group_name"),
-			ShouldIgnoreError: isNotFoundError([]string{"clusterSubnetGroupNotFoundFault", "invalidTagFault"}),
+			ShouldIgnoreError: isNotFoundError([]string{"ClusterSubnetGroupNotFoundFault"}),
 			Hydrate:           getRedshiftSubnetGroup,
 		},
 		List: &plugin.ListConfig{
@@ -123,7 +123,7 @@ func getRedshiftSubnetGroup(ctx context.Context, d *plugin.QueryData, _ *plugin.
 	if matrixRegion != nil {
 		region = matrixRegion.(string)
 	}
-	clusterSubnetGroupName := d.KeyColumnQuals["name"].GetStringValue()
+	clusterSubnetGroupName := d.KeyColumnQuals["cluster_subnet_group_name"].GetStringValue()
 
 	// Create service
 	svc, err := RedshiftService(ctx, d, region)

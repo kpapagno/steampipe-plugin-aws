@@ -4,8 +4,8 @@
 		"cluster_subnet_group_name": "{{ output.resource_id.value }}",
 		"description": "A test subnet group",
     "tags": {
-      "name": "{{resource_name}}"
+      "name": "{{ output.resource_id.value }}"
     },
-		"title": "{{resource_name}}"
+		"title": "{{ output.resource_id.value }}"
 	}
 ]

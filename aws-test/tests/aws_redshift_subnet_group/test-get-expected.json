@@ -6,9 +6,9 @@
     "tags_src": [
       {
         "Key": "name",
-        "Value": "{{resourceName}}"
+        "Value": "{{ output.resource_id.value }}"
       }
     ],
-    "vpc_id": "vpc_id.value"
+    "vpc_id": "{{ output.vpc_id.value }}"
 	}
 ]

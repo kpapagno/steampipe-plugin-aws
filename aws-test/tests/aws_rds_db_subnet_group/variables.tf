@@ -76,6 +76,15 @@ resource "aws_db_subnet_group" "named_test_resource" {
   }
 }
 
+resource "null_resource" "delay" {
+  provisioner "local-exec" {
+    command = "sleep 60"
+  }
+  triggers = {
+    "before" = "${aws_db_subnet_group.named_test_resource.name}"
+  }
+}
+
 output "vpc_id" {
   value = aws_vpc.aws_db_subnet_group.id
 }

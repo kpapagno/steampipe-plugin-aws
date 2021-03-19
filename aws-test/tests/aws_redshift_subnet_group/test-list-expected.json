@@ -5,8 +5,8 @@
 		"description": "A test subnet group",
     "subnet_group_status": "Complete",
     "tags": {
-      "name": "{{resource_name}}"
+      "name": "{{output.resource_id.value}}"
     },
-		"title": "{{resource_name}}"
+		"title": "{{ output.resource_id.value }}"
 	}
 ]
