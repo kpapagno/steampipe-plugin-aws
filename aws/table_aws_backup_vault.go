@@ -18,26 +18,21 @@ func tableAwsBackupVault(_ context.Context) *plugin.Table {
 	return &plugin.Table{
 		Name:        "aws_backup_vault",
 		Description: "AWS Backup Vault",
-		// Get: &plugin.GetConfig{
-		// 	KeyColumns:        plugin.AnyColumn([]string{"name"}),
-		// 	ShouldIgnoreError: isNotFoundError([]string{"InvalidParameterValue"}),
-		// 	Hydrate:           getAwsBackupVaultAccessPolicy,
-		// },
+		Get: &plugin.GetConfig{
+			KeyColumns:        plugin.AnyColumn([]string{"name"}),
+			ShouldIgnoreError: isNotFoundError([]string{"InvalidParameterValue"}),
+			Hydrate:           getAwsBackupVault,
+		},
 		GetMatrixItem: BuildRegionList,
 		List: &plugin.ListConfig{
 			Hydrate: listAwsBackupVaults,
 		},
-		Columns: []*plugin.Column{
+		Columns: awsRegionalColumns([]*plugin.Column{
 			{
 				Name:        "name",
 				Description: "The name of a logical container where backups are stored.",
 				Type:        proto.ColumnType_STRING,
 				Transform:   transform.FromField("BackupVaultName"),
-			},
-			{
-				Name:        "creation_date",
-				Description: "The date and time a resource backup is created",
-				Type:        proto.ColumnType_TIMESTAMP,
 			},
 			{
 				Name:        "arn",
@@ -46,8 +41,13 @@ func tableAwsBackupVault(_ context.Context) *plugin.Table {
 				Transform:   transform.FromField("BackupVaultArn"),
 			},
 			{
+				Name:        "creation_date",
+				Description: "The date and time a resource backup is created.",
+				Type:        proto.ColumnType_TIMESTAMP,
+			},
+			{
 				Name:        "creator_request_id",
-				Description: " unique string that identifies the request and allows failed requests to be retried without the risk of running the operation twice.",
+				Description: "An unique string that identifies the request and allows failed requests to be retried without the risk of running the operation twice.",
 				Type:        proto.ColumnType_STRING,
 			},
 			{
@@ -91,7 +91,7 @@ func tableAwsBackupVault(_ context.Context) *plugin.Table {
 				Type:        proto.ColumnType_JSON,
 				Transform:   transform.FromField("BackupVaultArn").Transform(arnToAkas),
 			},
-		},
+		}),
 	}
 }
 
@@ -121,6 +121,36 @@ func listAwsBackupVaults(ctx context.Context, d *plugin.QueryData, h *plugin.Hyd
 
 //// HYDRATE FUNCTIONS
 
+func getAwsBackupVault(ctx context.Context, d *plugin.QueryData, h *plugin.HydrateData) (interface{}, error) {
+	plugin.Logger(ctx).Trace("getAwsBackupVault")
+
+	// Create Session
+	svc, err := BackupService(ctx, d)
+	if err != nil {
+		return nil, err
+	}
+
+	var name string
+	if h.Item != nil {
+		vault := h.Item.(*backup.VaultListMember)
+		name = *vault.BackupVaultName
+	} else {
+		name = d.KeyColumnQuals["name"].GetStringValue()
+	}
+
+	params := &backup.DescribeBackupVaultInput{
+		BackupVaultName: aws.String(name),
+	}
+
+	op, err := svc.DescribeBackupVault(params)
+	if err != nil {
+		plugin.Logger(ctx).Debug("getAwsBackupVault", "ERROR", err)
+		return nil, err
+	}
+
+	return op, nil
+}
+
 func getAwsBackupVaultNotification(ctx context.Context, d *plugin.QueryData, h *plugin.HydrateData) (interface{}, error) {
 	plugin.Logger(ctx).Trace("getAwsBackupVaultNotification")
 
@@ -129,9 +159,7 @@ func getAwsBackupVaultNotification(ctx context.Context, d *plugin.QueryData, h *
 	if err != nil {
 		return nil, err
 	}
-
-	vault := h.Item.(*backup.VaultListMember)
-	name := *vault.BackupVaultName
+	name := vaultID(h.Item)
 
 	params := &backup.GetBackupVaultNotificationsInput{
 		BackupVaultName: aws.String(name),
@@ -147,11 +175,7 @@ func getAwsBackupVaultNotification(ctx context.Context, d *plugin.QueryData, h *
 		return nil, err
 	}
 
-	if len(op.GoString()) > 0 {
-		return op, nil
-	}
-
-	return nil, nil
+	return op, nil
 }
 
 func getAwsBackupVaultAccessPolicy(ctx context.Context, d *plugin.QueryData, h *plugin.HydrateData) (interface{}, error) {
@@ -162,8 +186,7 @@ func getAwsBackupVaultAccessPolicy(ctx context.Context, d *plugin.QueryData, h *
 	if err != nil {
 		return nil, err
 	}
-	vault := h.Item.(*backup.VaultListMember)
-	name := *vault.BackupVaultName
+	name := vaultID(h.Item)
 	params := &backup.GetBackupVaultAccessPolicyInput{
 		BackupVaultName: aws.String(name),
 	}
@@ -178,10 +201,15 @@ func getAwsBackupVaultAccessPolicy(ctx context.Context, d *plugin.QueryData, h *
 		plugin.Logger(ctx).Debug("getAwsBackupVaultAccessPolicy", "ERROR", err)
 		return nil, err
 	}
+	return op, nil
+}
 
-	if len(op.GoString()) > 0 {
-		return op, nil
+func vaultID(item interface{}) string {
+	switch item.(type) {
+	case *backup.VaultListMember:
+		return *item.(*backup.VaultListMember).BackupVaultName
+	case *backup.DescribeBackupVaultOutput:
+		return *item.(*backup.DescribeBackupVaultOutput).BackupVaultName
 	}
-
-	return nil, nil
+	return ""
 }
